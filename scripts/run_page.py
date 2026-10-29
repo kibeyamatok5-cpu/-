@@ -55,7 +55,7 @@ covd.update(edge_px=edge, speck_px=speck_n, real_missed_px=int(body.sum()),
 dashed_layers = {"A_DASHED", "P_DASHED", "L_CENTER", "L_PHANTOM"}
 shorts = []
 for e in ents:
-    if e["kind"] == "line" and e["layer"] not in dashed_layers and not e["layer"].startswith("TEXT") \
+    if e["kind"] == "line" and e["layer"] not in dashed_layers and "TEXT" not in e["layer"] \
             and e["layer"] not in ("A_HATCH", "FRAME") and 8 <= C.length(e) <= 60:
         d = (e["p1"] - e["p0"]) / C.length(e)
         shorts.append(dict(p0=e["p0"], p1=e["p1"], d=d, m=(e["p0"] + e["p1"]) / 2, L=C.length(e),

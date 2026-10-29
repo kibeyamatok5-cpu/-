@@ -182,8 +182,9 @@ def write(ents, X, path, tmask, origin, ref_image=None, title=""):
         a = dict(layer=e["layer"])
         k = e["kind"]
         wc = C.wclass4(e.get("w", np.nan)) if e.get("w") is not None else "nan"
-        if k in ("line", "arc", "circle", "poly") and wc in C.LW_CLASS:
-            a["lineweight"] = C.LW_CLASS[wc]      # 実測した太さの区分を図形ごとに反映
+        if k in ("line", "arc", "circle", "poly"):
+            # 実測した太さの区分を図形ごとに反映（短すぎて測れなかったものは細線とする）
+            a["lineweight"] = C.LW_CLASS.get(wc, C.LW_CLASS["thin"])
         if k == "line":
             msp.add_line(tuple(X(e["p0"])), tuple(X(e["p1"])), dxfattribs=a)
         elif k == "circle":

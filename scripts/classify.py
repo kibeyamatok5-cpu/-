@@ -153,7 +153,8 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
         P = []
         for a in axes:
             if a["fam"] == fam:
-                P += [a["c"], a["c"] + a["d"] * (a["far"] + 30)]
+                # 寸法線は記号から半径の約4倍以内にある。それより先（建物側）は寸法の範囲に含めない
+                P += [a["c"], a["c"] + a["d"] * min(a["far"] + 30, 4.5 * a["r"])]
         if len(P) >= 3:
             zones[fam] = cv2.convexHull(np.array(P, np.float32))
 
@@ -256,6 +257,9 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
             continue
         if lab.startswith("T:"):
             txt = lab[2:]
+            if txt.endswith("@180"):       # 目視で、自動推定の向きと上下が逆と判定したもの
+                txt = txt[:-4]
+                b["angle"] = (b.get("angle") or 0.0) + 180.0
             # 文字の中の長い直線（下線・寸法線）と、文字の帯の外にある線は線として残す
             hgt = text_height(b)
             keep = [s for s in prims if s["kind"] == "line" and length(s) > max(1.3 * hgt, 30)]
@@ -601,7 +605,99 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
             add("TEXT_SHAPE", s)       # 太い文字（「室」など）の線の重なりが黒丸に見えたもの
         else:
             add("SYM", s)
+    # かすれで切れた実線をつないでから（切れ目にインクが残るもの）、白い切れ目が等間隔に並ぶものを破線にする
+    if ink is not None:
+        for lay, gmax in (("DIM", 45), ("AXIS", 45), ("A_THIN", 30), ("A_MED", 30)):
+            ents = merge_broken(ents, lay, gmax, ink)
+    ents = merge_dash_chains(ents)
     return ents, checks
+
+
+def merge_dash_chains(ents):
+    """取り出し後の短い直線のうち、同一直線上に等間隔で3本以上並ぶもの（壁などに接していて
+    最初の段階で破線と判定できなかったもの）を、1本の破線にまとめる。"""
+    import extract as E
+    src_layers = {"A_THIN", "A_MED", "CHECK", "P_NOMARK"}
+    cand = [e for e in ents if e["kind"] == "line" and e["layer"] in src_layers and 8 <= length(e) <= 90]
+    if len(cand) < 3:
+        return ents
+    pieces = []
+    for e in cand:
+        d = (e["p1"] - e["p0"]) / length(e)
+        w = e.get("w")
+        pieces.append(dict(p0=e["p0"], p1=e["p1"], d=d, m=(e["p0"] + e["p1"]) / 2, L=length(e),
+                           th=w if (w is not None and not np.isnan(w)) else 4.0))
+    used = set(); new = []
+    for ch in E.link_dashes(pieces, np.zeros((0, 2)), max_gap=60, ang_tol=4.0, lat_tol=3.0):
+        if len(ch) < 3:
+            continue
+        ws = np.array([pieces[i]["th"] for i in ch])
+        if ws.max() > 1.8 * ws.min():
+            continue
+        pat = E.chain_pattern(ch, pieces, np.zeros((0, 2)), None)
+        if E.decide_linetype(pat) != "DASHED" or not E.regular(pat):
+            continue
+        w = float(np.median(ws))
+        lay = "A_DASHED" if wclass(w) == "thin" else "P_DASHED"
+        new.append(dict(kind="line", p0=pat["a"], p1=pat["b"], w=w, linetype="DASHED", pat=pat, layer=lay,
+                        src="dash2"))
+        used.update(id(cand[i]) for i in ch)
+    return [e for e in ents if id(e) not in used] + new
+
+
+def merge_broken(ents, layer, max_gap, ink):
+    """スキャンのかすれで切れた線をつなぐ。同じレイヤーで同一直線上にあり、
+    切れ目にインクのかけらが残っている（＝もとは1本の線）場合だけつなぐ。
+    切れ目が真っ白な場合（扉の開口など、もともと切れている線）はつながない。"""
+    H, W = ink.shape
+    def ok(e):
+        return e["layer"] == layer and e["kind"] == "line" and e.get("linetype", "CONTINUOUS") == "CONTINUOUS"
+    L = [e for e in ents if ok(e)]
+    other = [e for e in ents if not ok(e)]
+    changed = True
+    while changed and len(L) > 1:
+        changed = False
+        E_ = np.array([e["p0"] for e in L] + [e["p1"] for e in L]); n = len(L)
+        tree = cKDTree(E_)
+        dead = set(); new = []
+        for k1, k2 in sorted(tree.query_pairs(max_gap), key=lambda kk: np.hypot(*(E_[kk[0]] - E_[kk[1]]))):
+            i, j = k1 % n, k2 % n
+            if i == j or i in dead or j in dead:
+                continue
+            A, B = L[i], L[j]
+            va, vb = A["p1"] - A["p0"], B["p1"] - B["p0"]
+            la, lb = np.hypot(*va), np.hypot(*vb)
+            if la < 3 or lb < 3 or abs(np.dot(va, vb)) / (la * lb) < np.cos(np.deg2rad(2.5)):
+                continue
+            P = np.vstack([A["p0"], A["p1"], B["p0"], B["p1"]])
+            m = P.mean(0); u_, s_, vt = np.linalg.svd(P - m, full_matrices=False); d = vt[0]
+            nrm = np.array([-d[1], d[0]])
+            if np.abs((P - m) @ nrm).max() > 2.0:
+                continue
+            ta = sorted([np.dot(A["p0"] - m, d), np.dot(A["p1"] - m, d)])
+            tb = sorted([np.dot(B["p0"] - m, d), np.dot(B["p1"] - m, d)])
+            g0, g1 = (ta[1], tb[0]) if ta[0] < tb[0] else (tb[1], ta[0])
+            if g1 - g0 < -2 or g1 - g0 > max_gap:
+                continue
+            if g1 - g0 > 3:
+                ts = np.arange(g0 + 1, g1 - 1, 1.0)
+                q = np.round(m + ts[:, None] * d).astype(int)
+                q[:, 0] = np.clip(q[:, 0], 1, W - 2); q[:, 1] = np.clip(q[:, 1], 1, H - 2)
+                hit = np.zeros(len(q), bool)
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        hit |= ink[q[:, 1] + dy, q[:, 0] + dx] > 0
+                if hit.mean() < 0.2:
+                    continue
+            t = (P - m) @ d
+            wa, wb = A.get("w", np.nan), B.get("w", np.nan)
+            wa = np.nan if wa is None else wa; wb = np.nan if wb is None else wb
+            w = np.nansum([wa * la, wb * lb]) / max(1e-9, (la if not np.isnan(wa) else 0) + (lb if not np.isnan(wb) else 0)) \
+                if not (np.isnan(wa) and np.isnan(wb)) else np.nan
+            e = dict(A); e.update(p0=m + t.min() * d, p1=m + t.max() * d, w=w)
+            dead.update((i, j)); new.append(e); changed = True
+        L = [e for k, e in enumerate(L) if k not in dead] + new
+    return other + L
 
 
 def gap_glyph(ink, a, b, pad=4):
