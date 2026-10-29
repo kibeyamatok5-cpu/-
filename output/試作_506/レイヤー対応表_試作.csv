@@ -1,0 +1,21 @@
+﻿レイヤー名,日本語の意味,線種,色(ACI),色,線の太さ(mm),実測の太さ(px/紙面mm),図形の数
+AXIS,通り芯（記号から伸びる線）,CONTINUOUS,1,赤,0.15,3.8px / 0.16mm,10
+AXIS_SYM,通り芯記号の丸,CONTINUOUS,1,赤,0.20,5.2px / 0.22mm,14
+AXIS_TEXT,通り芯符号（X1・A1 など、文字データ）,CONTINUOUS,1,赤,0.13,,10
+A_DASHED,建築 破線（上部・隠れ線など）,DASHED,8,濃い灰,0.18,3.9px / 0.17mm,5
+A_HATCH,ハッチング・階段の段など（等間隔の平行線群）,CONTINUOUS,252,灰,0.15,3.8px / 0.16mm,11
+A_MED,中線（建築の外形・引出線などが混在、用途は要確認）,CONTINUOUS,9,薄い灰,0.20,5.2px / 0.22mm,2048
+A_THIN,建築 細線（壁・建具・家具など）,CONTINUOUS,8,濃い灰,0.15,3.8px / 0.16mm,2753
+CHECK,要確認（分類できなかったもの）,CONTINUOUS,2,黄,0.35,7.8px / 0.33mm,885
+DIM,寸法線・寸法の点,CONTINUOUS,3,緑,0.15,3.8px / 0.16mm,57
+DIM_TEXT,寸法値（文字データ）,CONTINUOUS,3,緑,0.13,,7
+FRAME,図枠・表題欄の線,CONTINUOUS,8,濃い灰,0.20,4.8px / 0.20mm,8
+L_PHANTOM,二点鎖線（用途は要確認）,PHANTOM,34,茶,0.09,2.3px / 0.10mm,1
+P_LEADER,配管径などの引出線・下線,CONTINUOUS,140,空色,0.20,4.8px / 0.20mm,5
+P_NOMARK,太線の配管（線の途中に記号なし。系統は要確認）,CONTINUOUS,6,紫(マゼンタ),0.35,7.8px / 0.33mm,92
+P_R,配管「R」系統（線の途中に R。雨水排水管と思われるが要確認）,CONTINUOUS,5,青,0.40,9.5px / 0.40mm,40
+P_R_MARK,配管の線の途中の記号「R」（線のまま）,CONTINUOUS,5,青,0.25,5.7px / 0.24mm,86
+P_SIZE,配管径などの数値（文字データ）,CONTINUOUS,140,空色,0.13,,8
+REF_IMAGE,参照用の原図画像（初期は非表示）,CONTINUOUS,8,濃い灰,0.13,,1
+SYM,器具・ドレン・桝などの記号（丸・四角・黒丸など）,CONTINUOUS,4,水色,0.25,5.7px / 0.24mm,139
+TEXT_SHAPE,文字（判読に自信がないため線の形のまま）,CONTINUOUS,7,黒/白,0.30,6.8px / 0.29mm,2250
