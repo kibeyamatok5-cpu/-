@@ -216,6 +216,10 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
     def in_frame(p):
         return p[1] < frame["title_top"] - 4 and not scan_edge(p)
 
+    def title_edge(s):
+        """表題欄の上端の線（およびその近くの線）"""
+        return s["kind"] == "line" and all(abs(q[1] - frame["title_top"]) < 25 for q in (s["p0"], s["p1"]))
+
     def edge_tick(s):
         """用紙の縁の目盛り（縁に直交する短い線）"""
         if s["kind"] != "line" or length(s) > 150:
@@ -333,7 +337,7 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
                 absorbed += 1; continue      # 文字データの一部（「1」の縦棒など）
         if scan_edge(m_):
             dropped += 1; continue
-        if not in_frame(m_) or edge_tick(s):
+        if not in_frame(m_) or edge_tick(s) or title_edge(s):
             add("FRAME", s); continue
         if s["kind"] in ("circle", "arc") and bubble_of(s["c"], s["r"]) is not None:
             add("AXIS_SYM", s); continue
