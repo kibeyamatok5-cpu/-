@@ -497,7 +497,7 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
 
     # ---- 引出線（配管径の数字の下線につながる線）
     pipe_pts = [e for e in ents if e.get("layer", "").startswith("P_") and e["kind"] == "line"]
-    und = [e for e in ents if e.get("src") == "underline" and e["layer"] == "P_LEADER"]
+    und = [e for e in ents if e.get("src") == "underline" and e["layer"] == "P_LEADER" and e["kind"] == "line"]
     lead_ends = [p for u in und for p in (u["p0"], u["p1"])]
     for b in leaders_from:
         x, y, w, h = b["bbox"]
