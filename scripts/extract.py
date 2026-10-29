@@ -583,8 +583,9 @@ def process(ink, origin=(0, 0)):
     for s in lines + curves:
         if is_graphic(s):
             paint(gmask, s)
-    for s in dashed:
-        gmask[np.isin(lab, s["comps"])] = 1
+    dcomps = [c for s in dashed for c in s["comps"]]
+    if dcomps:
+        gmask[np.isin(lab, dcomps)] = 1
     fdots = find_filled_dots(ink)
     for d in fdots:
         cv2.circle(gmask, tuple(np.round(d["c"]).astype(int)), int(d["r"] + 2), 1, -1)

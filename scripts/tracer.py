@@ -190,11 +190,12 @@ def trace_skeleton(mask, dt):
     jmask[jr, jc] = 1
     jmask = cv2.dilate(jmask, np.ones((3, 3), np.uint8))
     nj, jlab = cv2.connectedComponents(jmask, connectivity=8)
-    junctions = {}
-    for k in range(1, nj):
-        ys, xs = np.nonzero((jlab == k) & sk)
-        if len(xs):
-            junctions[k] = np.array([xs.mean(), ys.mean()])
+    # 分岐画素の塊ごとの中心（塊の数が多くても速いように、まとめて集計する）
+    ys, xs = np.nonzero((jlab > 0) & sk)
+    ids = jlab[ys, xs]
+    cnt = np.bincount(ids, minlength=nj)
+    sx = np.bincount(ids, weights=xs, minlength=nj); sy = np.bincount(ids, weights=ys, minlength=nj)
+    junctions = {k: np.array([sx[k] / cnt[k], sy[k] / cnt[k]]) for k in range(1, nj) if cnt[k] > 0}
     paths = []
     for i in range(S.n_paths):
         rc = S.path_coordinates(i)

@@ -54,9 +54,9 @@ def text_band_px(e, tmask, origin):
     crop, o = ocr.block_crop(tmask, b["bbox"], origin, pad=4)
     # 下線・寸法線など、線として残す部分は文字の位置決めから除く
     for s in e.get("exclude", []):
-        w = s.get("w", 4.0); w = 4.0 if np.isnan(w) else w
-        cv2.line(crop, tuple(np.round(s["p0"] - o).astype(int)), tuple(np.round(s["p1"] - o).astype(int)), 0,
-                 int(round(w + 4)))
+        w = s.get("w", 4.0); w = 4.0 if (w is None or np.isnan(w)) else w
+        P = np.vstack([s["p0"], s["p1"]]) if s["kind"] == "line" else s["pts"]
+        cv2.polylines(crop, [np.round(P - np.array(o)).astype(np.int32)], s["kind"] == "circle", 0, int(round(w + 4)))
     ang = b.get("angle") or 0.0
     if ang:
         rimg, M = ocr.rotate(crop, ang)
