@@ -7,7 +7,7 @@ from scipy.optimize import least_squares
 
 def detect_bubbles(ink):
     blur = cv2.GaussianBlur(255 - ink, (5, 5), 1.5)
-    cs = cv2.HoughCircles(blur, cv2.HOUGH_GRADIENT, dp=1, minDist=80, param1=100,
+    cs = cv2.HoughCircles(blur, cv2.HOUGH_GRADIENT, dp=1, minDist=60, param1=100,
                           param2=35, minRadius=44, maxRadius=66)
     out = []
     t = np.linspace(0, 2*np.pi, 180, endpoint=False)
@@ -74,10 +74,13 @@ def trace_axis(ink, cx, cy, r, ang0, span=25, length=(1.15, 7.0)):
         pts = pts[keep]
     return v, a, pts
 
-def fit(page_cfg, ink):
+def trace_families(page_cfg, ink, key="families"):
     bub = [refine_center(ink, *b) for b in detect_bubbles(ink)]
+    # 隣の丸と接していて自動検出できなかった丸（位置の目安を設定で与え、精密化する）
+    for b in page_cfg.get("extra_bubbles", []):
+        bub.append(refine_center(ink, *b))
     fams = {}
-    for f in page_cfg["families"]:
+    for f in page_cfg.get(key, []):
         x0, y0, x1, y1 = f["region"]
         cand = [b for b in bub if x0 <= b[0] <= x1 and y0 <= b[1] <= y1]
         if "band" in f:   # 2点を結ぶ直線の近く（斜めの並び）だけを採用
@@ -93,6 +96,11 @@ def fit(page_cfg, ink):
             v, a, pts = trace_axis(ink, b[0], b[1], b[2], f["ang"], length=f.get("len", (1.15, 7.0)))
             lines.append(dict(label=lab, bubble=b, ang=float(np.rad2deg(a)), cover=float(v/255), pts=pts))
         fams[f["name"]] = (f, lines)
+    return fams
+
+
+def fit(page_cfg, ink):
+    fams = trace_families(page_cfg, ink)
     # 未知数: 画素→mm のアフィン変換 (a,b,c,d,tx,ty) と、斜め通り芯群ごとの向き・原点
     oblique = [n for n, (f, _) in fams.items() if f["kind"] == "oblique"]
     def unpack(p):
@@ -127,7 +135,6 @@ def fit(page_cfg, ink):
     results = {}
     for mode in ("similarity", "scale_xy", "affine"):
         sol = least_squares(lambda p: resid(p, mode), p0, x_scale="jac")
-        # 平行移動と斜め原点を再推定して収束を確実にする
         sol = least_squares(lambda p: resid(p, mode), sol.x, x_scale="jac")
         results[mode] = sol
     return fams, results, unpack
@@ -176,6 +183,30 @@ if __name__ == "__main__":
         out[mode] = dict(M=M.tolist(), t=t.tolist(), oblique={k: list(v) for k, v in ob.items()},
                          rms=float(np.sqrt(np.mean(r**2))), sx=sx, sy=sy, rot=rot, ortho=shear,
                          rows=[list(map(lambda v: v if isinstance(v, str) else float(v), row)) for row in rows])
+    # 同じ用紙の別の図（例：508 左上の小さな平面図）：間隔だけを確認する
+    if pc.get("secondary"):
+        M, t, ob = unpack(results["affine"].x)
+        sec = trace_families(pc, ink, "secondary")
+        srows = []
+        for n, (f, lines) in sec.items():
+            co = []
+            for ln in lines:
+                q = ln["pts"] @ M.T + t
+                co.append(q[:, 0].mean() if f["kind"] == "x" else q[:, 1].mean())
+            for i in range(len(lines) - 1):
+                srows.append([n, lines[i]["label"], lines[i + 1]["label"], f["pos"][i + 1] - f["pos"][i],
+                              float(co[i + 1] - co[i]), float(co[i + 1] - co[i] - (f["pos"][i + 1] - f["pos"][i]))])
+            srows.append([n, lines[0]["label"], lines[-1]["label"] + " (全長)", f["pos"][-1] - f["pos"][0],
+                          float(co[-1] - co[0]), float(co[-1] - co[0] - (f["pos"][-1] - f["pos"][0]))])
+            # この図の通り芯の位置（本体の座標系での値）。本体の図とのずれ
+            srows.append([n, "offset", lines[0]["label"], f["pos"][0], float(co[0]), float(co[0] - f["pos"][0])])
+        for r_ in srows:
+            print("   副図 %-6s %-6s→%-10s 図面 %7.0f  測定 %9.1f  差 %+8.1f" % tuple(r_))
+        out["secondary"] = srows
+        out["axes_secondary"] = {n: [dict(label=l["label"], bubble=l["bubble"], ang=l["ang"], cover=l["cover"],
+                                     p0=(l["pts"][0].tolist() if l["pts"] is not None else None),
+                                     p1=(l["pts"][-1].tolist() if l["pts"] is not None else None)) for l in lines]
+                                 for n, (f, lines) in sec.items()}
     out["axes"] = {n: [dict(label=l["label"], bubble=l["bubble"], ang=l["ang"], cover=l["cover"],
                        p0=(l["pts"][0].tolist() if l["pts"] is not None else None),
                        p1=(l["pts"][-1].tolist() if l["pts"] is not None else None)) for l in lines]

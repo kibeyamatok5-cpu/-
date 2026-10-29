@@ -134,7 +134,8 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
 
     # ---- 通り芯
     axes = []
-    for fam, lst in calib["axes"].items():
+    all_axes = dict(calib["axes"]); all_axes.update(calib.get("axes_secondary", {}))
+    for fam, lst in all_axes.items():
         for a in lst:
             if a["p0"] is None:
                 continue
@@ -143,12 +144,12 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
             d = (p1 - bc) / np.linalg.norm(p1 - bc)
             rot = 0.0
             if page_cfg:
-                for f in page_cfg["families"]:
+                for f in page_cfg["families"] + page_cfg.get("secondary", []):
                     if f["name"] == fam:
                         rot = f.get("label_rot", 0.0)
             axes.append(dict(fam=fam, label=a["label"], c=bc, r=br, d=d, far=float(np.dot(p1 - bc, d)), rot=rot))
     zones = {}
-    for fam in calib["axes"]:
+    for fam in all_axes:
         P = []
         for a in axes:
             if a["fam"] == fam:
@@ -533,6 +534,15 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
         return bool(((boxes[:, 0] <= p[0]) & (p[0] <= boxes[:, 0] + boxes[:, 2]) &
                      (boxes[:, 1] <= p[1]) & (p[1] <= boxes[:, 1] + boxes[:, 3])).any())
 
+    # 短い太線・中線が集まっている所は手描きの太い文字とみなす（3本以上が40px以内）
+    shorts = [x for x in others if wclass(x.get("w")) in ("thick", "med") and length(x) < 60]
+    sh_tree = cKDTree(np.array([mid(x) for x in shorts])) if shorts else None
+
+    def short_cluster(s):
+        if sh_tree is None:
+            return False
+        return len(sh_tree.query_ball_point(mid(s), 40)) >= 4     # 自分を含めて4本
+
     for s in others:
         if s.get("_used"):
             add(s["_used"], s); continue
@@ -554,7 +564,7 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
                 lay = pipe_near(s)
                 if lay:
                     add(lay, s); continue
-                if in_block_box(mid(s)):
+                if in_block_box(mid(s)) or short_cluster(s):
                     add("TEXT_SHAPE", s); continue
                 add("CHECK", s, why="短い太線（文字の一部か配管の一部か不明）"); continue
             add("P_NOMARK", s); continue

@@ -189,35 +189,46 @@ def audit(path):
 
 
 def measure_axes_in_dxf(doc, calib, page_cfg, X):
-    """DXF の AXIS レイヤーの線から、通り芯の間隔を測り、図面の寸法値と比べる"""
-    lines = [e for e in doc.modelspace().query('LINE[layer=="AXIS"]')]
-    segs = [(np.array([e.dxf.start.x, e.dxf.start.y]), np.array([e.dxf.end.x, e.dxf.end.y])) for e in lines]
+    """DXF の AXIS レイヤーの線から、通り芯の間隔を測り、図面の寸法値と比べる。
+    各通り芯記号の中心を通り、その通り芯の向きに平行な AXIS 線を探して使う。"""
+    segs = []
+    for e in doc.modelspace().query('LINE[layer=="AXIS"]'):
+        p0 = np.array([e.dxf.start.x, e.dxf.start.y]); p1 = np.array([e.dxf.end.x, e.dxf.end.y])
+        v = p1 - p0; L = np.hypot(*v)
+        if L > 1:
+            segs.append((p0, p1, v / L, L))
     rows = []
-    for f in page_cfg["families"]:
+    fams = list(page_cfg["families"]) + list(page_cfg.get("secondary", []))
+    axes = dict(calib["axes"]); axes.update(calib.get("axes_secondary", {}))
+    for f in fams:
         fam = f["name"]
-        if fam not in calib["axes"]:
+        if fam not in axes:
             continue
         found = []
-        for a, nom in zip(calib["axes"][fam], f["pos"]):
+        for a, nom in zip(axes[fam], f["pos"]):
+            if a["p0"] is None:
+                continue
             bc = X(np.array(a["bubble"][:2]))
-            # 記号の中心を通る AXIS 線を探す
+            d = X(np.array(a["p1"])) - X(np.array(a["p0"])); d /= np.linalg.norm(d)
             best = None
-            for p0, p1 in segs:
-                v = p1 - p0; L = np.hypot(*v)
-                if L < 1:
+            for p0, p1, u, L in segs:
+                if abs(np.dot(u, d)) < np.cos(np.deg2rad(3)):
                     continue
-                u = v / L; n = np.array([-u[1], u[0]])
+                n = np.array([-u[1], u[0]])
                 off = abs(np.dot(bc - p0, n))
-                if off < 300 and (best is None or off < best[0]):
-                    best = (off, p0, p1, u, n)
+                if off < 400 and (best is None or L > best[3] and off < 200 or off < best[0] - 100):
+                    best = (off, p0, p1, L, u, n)
             if best is not None:
                 found.append((a["label"], nom, best))
-        for (l0, n0, b0), (l1, n1, b1) in zip(found[:-1], found[1:]):
-            # 2本目の線の中点から1本目の直線までの距離
-            p0, p1, u, n = b0[1], b0[2], b0[3], b0[4]
+        if len(found) < 2:
+            continue
+        def dist(b0, b1):
             q = (b1[1] + b1[2]) / 2
-            dist = abs(np.dot(q - p0, n))
-            ang = np.degrees(np.arccos(min(1, abs(np.dot(u, b1[3])))))
-            rows.append(dict(fam=fam, a=l0, b=l1, nominal=n1 - n0, measured=float(dist),
-                             err=float(dist - (n1 - n0)), angle_diff=float(ang)))
+            return abs(np.dot(q - b0[1], b0[5]))
+        for (l0, n0, b0), (l1, n1, b1) in zip(found[:-1], found[1:]):
+            dd = dist(b0, b1)
+            rows.append(dict(fam=fam, a=l0, b=l1, nominal=n1 - n0, measured=float(dd), err=float(dd - (n1 - n0))))
+        (l0, n0, b0), (l1, n1, b1) = found[0], found[-1]
+        dd = dist(b0, b1)
+        rows.append(dict(fam=fam, a=l0, b=l1 + "（全長）", nominal=n1 - n0, measured=float(dd), err=float(dd - (n1 - n0))))
     return rows
