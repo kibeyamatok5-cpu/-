@@ -113,7 +113,13 @@ for p, name, fl in PAGES:
 L += ["- 文字認識ソフト（tesseract）は手描き文字をほとんど読めなかったため、文字のまとまりを切り出した画像を目で見て判定しました。"
       "数字は1文字ずつ確認し、欠け・重なりがあるものや自信のないものは文字データにせず、線の形のまま TEXT_SHAPE レイヤーに残しています。", ""]
 
-L += ["## 6. 要確認", "", "`要確認一覧.csv` に、場所（mm座標と通り芯）付きで載せています。内容ごとの件数：", ""]
+L += ["## 6. 参照用の原図画像の位置（Rhino の Picture コマンド用）", "",
+      "| 画像 | 左下 (mm) | 右上 (mm) |", "|---|---|---|"]
+for p, name, fl in PAGES:
+    ref = R[p]["ref"]; x, y = ref["insert"]; w, h = ref["size_mm"]
+    L.append(f"| {name}_原図.png | ({x:.0f}, {y:.0f}) | ({x + w:.0f}, {y + h:.0f}) |")
+L += ["", "DXFには同じ画像を REF_IMAGE レイヤー（非表示）に配置済みです。画像ファイルはDXFと同じフォルダに置いてください。", ""]
+L += ["## 7. 要確認", "", "`要確認一覧.csv` に、場所（mm座標と通り芯）付きで載せています。内容ごとの件数：", ""]
 for p, name, fl in PAGES:
     from collections import Counter
     cnt = Counter()

@@ -70,7 +70,10 @@ def text_band_px(e, tmask, origin):
     rows = rimg[:, x0:x1].sum(1)
     band = np.nonzero(rows > 0.06 * (x1 - x0))[0]
     if len(band):
-        y0, y1 = band.min(), band.max() + 1
+        # 行が途切れる所で分け、インクの最も多いひとかたまりを文字の帯とする（下の図形などを含めない）
+        segs = np.split(band, np.nonzero(np.diff(band) > 3)[0] + 1)
+        seg = max(segs, key=lambda g: rows[g].sum())
+        y0, y1 = seg.min(), seg.max() + 1
         cols = np.nonzero(rimg[y0:y1].sum(0))[0]
         if len(cols):
             x0, x1 = cols.min(), cols.max() + 1
