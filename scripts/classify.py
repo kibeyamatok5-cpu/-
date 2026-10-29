@@ -147,7 +147,12 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
                 for f in page_cfg["families"] + page_cfg.get("secondary", []):
                     if f["name"] == fam:
                         rot = f.get("label_rot", 0.0)
-            axes.append(dict(fam=fam, label=a["label"], c=bc, r=br, d=d, far=float(np.dot(p1 - bc, d)), rot=rot))
+            lp0 = np.array(a["p0"])
+            ld = (p1 - lp0) / max(1e-6, np.linalg.norm(p1 - lp0))
+            if np.dot(ld, d) < 0:
+                ld = -ld
+            axes.append(dict(fam=fam, label=a["label"], c=bc, r=br, d=d, far=float(np.dot(p1 - bc, d)), rot=rot,
+                             lp=lp0, ld=ld))
     zones = {}
     for fam in all_axes:
         P = []
@@ -186,13 +191,15 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
             return None
         u = v / L
         for a in axes:
-            if abs(np.dot(u, a["d"])) < np.cos(np.deg2rad(2.0)):
+            # なぞった通り芯の線そのものの位置・向きで比べる（記号の丸は線から少しずれて描かれていることがある）
+            if abs(np.dot(u, a["ld"])) < np.cos(np.deg2rad(1.5)):
                 continue
-            n = np.array([-a["d"][1], a["d"][0]])
-            if max(abs(np.dot(s["p0"] - a["c"], n)), abs(np.dot(s["p1"] - a["c"], n))) > 5:
+            n = np.array([-a["ld"][1], a["ld"][0]])
+            if max(abs(np.dot(s["p0"] - a["lp"], n)), abs(np.dot(s["p1"] - a["lp"], n))) > 5:
                 continue
             t0, t1 = np.dot(s["p0"] - a["c"], a["d"]), np.dot(s["p1"] - a["c"], a["d"])
-            if min(t0, t1) > a["r"] - 10 and max(t0, t1) < a["far"] + 60:
+            # 記号の外側から始まり、寸法線の範囲の中で始まる線（その先へ建物の中まで伸びるものも通り芯）
+            if min(t0, t1) > a["r"] - 10 and min(t0, t1) < a["far"] + 60:
                 return a
         return None
 

@@ -208,7 +208,7 @@ def measure_axes_in_dxf(doc, calib, page_cfg, X):
         for a, nom in zip(axes[fam], f["pos"]):
             if a["p0"] is None:
                 continue
-            bc = X(np.array(a["bubble"][:2]))
+            bc = X(np.array(a["p0"]))      # なぞった通り芯の線上の点（記号の丸は線から少しずれることがある）
             d = X(np.array(a["p1"])) - X(np.array(a["p0"])); d /= np.linalg.norm(d)
             best = None
             for p0, p1, u, L in segs:
@@ -216,7 +216,8 @@ def measure_axes_in_dxf(doc, calib, page_cfg, X):
                     continue
                 n = np.array([-u[1], u[0]])
                 off = abs(np.dot(bc - p0, n))
-                if off < 400 and (best is None or L > best[3] and off < 200 or off < best[0] - 100):
+                # 記号の中心はその通り芯の延長上にある：中心からのずれが最も小さい線を使う
+                if off < 100 and (best is None or off < best[0]):
                     best = (off, p0, p1, L, u, n)
             if best is not None:
                 found.append((a["label"], nom, best))
