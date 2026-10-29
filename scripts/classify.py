@@ -221,6 +221,7 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
 
     # ---- 文字のまとまりの処理
     inline = []      # 線の途中の記号
+    text_polys = []  # 文字データにした文字の範囲
     leaders_from = []
     for b in blocks:
         lab = b["label"]
@@ -268,6 +269,13 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
                     if cv2.pointPolygonTest(poly, tuple(map(float, mid(s))), True) < -3:
                         keep.append(s)
                 hgt = float(np.hypot(*(band["tl"] - band["bl"])))
+                # 文字の帯を前後に少し広げた範囲（「1」など直線の字が線側に取られた分を文字に戻すため）
+                u_ = band["br"] - band["bl"]; u_ = u_ / max(1e-6, np.hypot(*u_))
+                v_ = band["tl"] - band["bl"]; v_ = v_ / max(1e-6, np.hypot(*v_))
+                ex = 0.7 * hgt; ey = 0.15 * hgt
+                text_polys.append((np.array([band["bl"] - ex * u_ - ey * v_, band["br"] + ex * u_ - ey * v_,
+                                             band["tr"] + ex * u_ + ey * v_, band["tl"] - ex * u_ + ey * v_],
+                                            np.float32), hgt))
             zone = in_zone(b["c"], margin=20)
             numeric = re.fullmatch(r"[0-9.,x×/φ]+(pe|PE|VP|vp|A)?", txt) is not None
             layer = "DIM_TEXT" if zone else ("P_SIZE" if numeric else "TEXT")
@@ -301,8 +309,17 @@ def classify(r, calib, review, frame, page_cfg=None, ink=None):
 
     rest = []
     dropped = 0
+    absorbed = 0
     for s in geo:
         m_ = mid(s)
+        if s["kind"] == "line" and wclass(s.get("w")) in ("med", "thick") and text_polys:
+            hit = False
+            for poly, hg in text_polys:
+                if length(s) < 1.5 * hg and all(cv2.pointPolygonTest(poly, tuple(map(float, q)), False) >= 0
+                                                for q in (s["p0"], s["p1"])):
+                    hit = True; break
+            if hit:
+                absorbed += 1; continue      # 文字データの一部（「1」の縦棒など）
         if scan_edge(m_):
             dropped += 1; continue
         if not in_frame(m_) or edge_tick(s):
